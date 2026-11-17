@@ -1,0 +1,33 @@
+@startuml
+skinparam dpi 140
+skinparam maxMessageSize 180
+skinparam responseMessageBelowArrow true
+skinparam sequenceMessageAlign center
+hide footbox
+title A — Main delivery scenario
+autonumber
+participant "Bank service" as Bank
+queue Kafka
+participant "Delivery Control" as Control
+database PostgreSQL as DB
+participant "Channel Gateway" as Gateway
+participant "Push / App" as Push
+Bank -> Bank: Commit operation + source outbox
+Bank -> Kafka: CDC business event (stable key)
+Kafka -> Control: Consume critical event
+Control -> DB: BEGIN: dedup + notification + outbox; COMMIT
+Control -> Kafka: Commit input offset
+Control -> DB: Reserve push + deadline + command outbox
+Control -> Kafka: CDC send command
+Kafka -> Gateway: Push attempt (stable attempt_id)
+Gateway -> Gateway: Verify current state, policy and contact
+Gateway -> Push: Send push with stable provider key
+Push --> Gateway: Accepted (NOT delivered)
+Gateway -> DB: Save PROVIDER_ACCEPTED
+Push -> Gateway: Authenticated device ACK
+Gateway -> DB: Inbox + lock notification\nDELIVERED + audit/outbox; COMMIT
+note over Control,DB
+First positive evidence wins.
+History and analytics update asynchronously.
+end note
+@enduml

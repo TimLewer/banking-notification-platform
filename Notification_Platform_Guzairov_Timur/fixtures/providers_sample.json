@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "mock": true,
+  "cases": {
+    "delivered": {"status": 200, "receipt": "delivered"},
+    "accepted": {"status": 200, "receipt": "accepted"},
+    "invalid_recipient": {"status": 400, "error": "invalid_recipient"},
+    "unavailable": {"status": 500, "error": "unavailable"},
+    "timeout": {"timeout": true}
+  }
+}

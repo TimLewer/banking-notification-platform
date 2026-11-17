@@ -1,0 +1,30 @@
+@startuml
+!pragma layout smetana
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam dpi 140
+skinparam wrapWidth 150
+title B — Critical delivery / C4 Container
+System_Ext(bank, "Bank services", "Operations and source outbox")
+System_Ext(profile, "Bank profile service", "Verified contacts and policy")
+System_Ext(channels, "Providers and bank app", "Push / SMS / email / device ACK")
+System_Boundary(platform, "Notification Platform — critical subsystem") {
+  ContainerQueue(bus, "Input bus", "Kafka + Debezium", "Critical business events; bulk isolated")
+  Container(intake, "Intake and callback ingress", "Go", "Dedup, start relay and callback inbox relay")
+  ContainerDb(ledger, "Application Store", "PostgreSQL", "90-day dedup, inbox/outbox and history projection")
+  Container(temporal, "Workflow Service", "Temporal Server", "Durable history, signals, timers and task queues")
+  ContainerDb(history, "Workflow Persistence", "PostgreSQL", "Temporal-owned durable history")
+  Container(worker, "Delivery Worker", "Temporal Go SDK", "Workflow and idempotent channel activities")
+}
+Rel(bank, bus, "Business events", "CDC / Kafka")
+Rel(bus, intake, "Consume", "Kafka")
+Rel(intake, ledger, "Atomic dedup / inbox / outbox", "SQL / TLS")
+Rel(intake, temporal, "StartWorkflow / Signal", "gRPC / TLS")
+Rel(temporal, history, "Persist history", "SQL / TLS")
+Rel(worker, temporal, "Poll tasks, record results", "gRPC / TLS")
+Rel(worker, profile, "Policy and contacts before send", "HTTPS / mTLS")
+Rel(worker, channels, "Send / status lookup", "HTTPS")
+Rel(channels, intake, "Verified delivery evidence", "HTTPS + auth")
+Rel(worker, ledger, "Idempotent audit projection", "SQL / TLS")
+SHOW_LEGEND()
+@enduml

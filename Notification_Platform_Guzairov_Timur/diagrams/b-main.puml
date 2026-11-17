@@ -1,0 +1,33 @@
+@startuml
+skinparam dpi 140
+skinparam maxMessageSize 180
+skinparam sequenceMessageAlign center
+hide footbox
+title B — Main delivery scenario
+autonumber
+participant "Intake / Relay" as Intake
+database "Application Store" as DB
+participant "Temporal Service" as Temporal
+participant "Workflow / Activities" as Worker
+participant "Push / App" as Push
+Intake -> DB: Persist event + dedup + StartWorkflow outbox
+Intake -> Temporal: StartWorkflow(notification_id)
+Temporal -> Temporal: Persist workflow history
+Temporal -> Worker: Workflow task
+Worker -> Temporal: Schedule push activity + durable ACK timer
+Temporal -> Worker: Activity task
+Worker -> Worker: Check policy, state and verified contact
+Worker -> Push: Send with stable attempt key
+Push --> Worker: Accepted (NOT delivered)
+Worker -> Temporal: Activity result = PROVIDER_ACCEPTED
+Push -> Intake: Authenticated device ACK
+Intake -> DB: Durable callback inbox
+Intake -> Temporal: Relay Signal(ACK, callback_id)
+Temporal -> Worker: Workflow task with ACK
+Worker -> Temporal: Record DELIVERED; cancel unstarted work
+Worker -> DB: Idempotent projection / audit activity
+note over DB,Temporal
+Temporal history owns process state.
+Application projection may lag.
+end note
+@enduml

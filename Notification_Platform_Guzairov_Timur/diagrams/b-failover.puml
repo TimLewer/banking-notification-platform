@@ -1,0 +1,41 @@
+@startuml
+skinparam dpi 140
+skinparam maxMessageSize 180
+skinparam sequenceMessageAlign center
+hide footbox
+title B — Durable timer and SMS failover
+autonumber
+participant "Temporal Service" as Temporal
+participant "Workflow / Activities" as Worker
+participant "Push / App" as Push
+participant SMS
+participant "Callback Ingress" as Ingress
+Worker -> Temporal: Persist push activity and ACK deadline
+Worker -> Push: Send with stable key
+Push --> Worker: Response lost
+Worker -> Temporal: Activity result = UNKNOWN
+... worker restarts; history replays ...
+Temporal -> Worker: Durable t=3 timer fired
+Worker -> Push: Reconciliation activity: status lookup
+Push --> Worker: Still UNKNOWN
+Worker -> Temporal: Schedule SMS activity (within total deadline)
+Temporal -> Worker: SMS activity task
+Worker -> SMS: Send with stable SMS attempt key
+SMS -> Ingress: Signed positive DLR
+Ingress -> Ingress: Persist callback inbox before relay
+Ingress -> Temporal: Signal(DLR, unique callback_id)
+Temporal -> Worker: ACK event
+Worker -> Temporal: DELIVERED; cancel unstarted email activity
+Worker -> Temporal: Persist result/projection; close workflow
+Push -> Ingress: Late device ACK
+Ingress -> Ingress: Closed workflow: retain inbox evidence for audit
+note over Temporal,Ingress
+Closed-workflow signals remain in durable inbox.
+Reconciler adds late evidence to audit.
+Already sent SMS cannot be unsent by workflow cancel.
+end note
+note over Temporal,Worker
+ESCALATED workflows stay open up to t=24h
+for late ACKs; no new automatic sends after t=60s.
+end note
+@enduml

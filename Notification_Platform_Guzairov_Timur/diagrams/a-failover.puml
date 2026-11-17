@@ -1,0 +1,35 @@
+@startuml
+skinparam dpi 140
+skinparam maxMessageSize 180
+skinparam sequenceMessageAlign center
+hide footbox
+title A — Push timeout and SMS failover
+autonumber
+participant "Scheduler / Control" as Control
+database PostgreSQL as DB
+participant Gateway
+participant "Push / App" as Push
+participant "SMS provider" as SMS
+Control -> DB: Persist push intent and t+3 deadline
+Control -> Gateway: Outbox / Kafka: push attempt
+Gateway -> Push: Send push
+Push --> Gateway: Response lost / timeout
+Gateway -> DB: Push = UNKNOWN (not FAILED)
+... durable timer reaches t=3 ...
+Control -> Gateway: Reconcile push by stable key
+Gateway -> Push: Status lookup if supported
+Push --> Gateway: Still unknown
+Control -> DB: Lock / CAS: still PENDING?\nReserve SMS + command; COMMIT
+Control -> Gateway: Outbox / Kafka: SMS attempt
+Gateway -> Gateway: Recheck state, fence and contact
+Gateway -> SMS: Send SMS with stable key
+SMS -> Gateway: Signed positive DLR
+Gateway -> DB: Inbox + DELIVERED + audit; COMMIT
+Push -> Gateway: Late positive push ACK
+Gateway -> DB: Record late success; keep DELIVERED
+Control -> DB: Read terminal state; no email send
+note over Push,SMS
+Both remote effects may already exist.
+Logical dedup cannot retract a delivered SMS.
+end note
+@enduml

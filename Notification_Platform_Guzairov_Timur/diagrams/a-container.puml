@@ -1,0 +1,30 @@
+@startuml
+!pragma layout smetana
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam dpi 140
+skinparam wrapWidth 160
+title A — Critical delivery / C4 Container
+System_Ext(bank, "Bank services", "Operations and source outbox")
+System_Ext(profile, "Bank profile service", "Verified contacts and policy")
+System_Ext(channels, "Delivery providers", "Push / SMS / email")
+System_Ext(client, "Bank application", "Authenticated device ACK")
+System_Boundary(platform, "Notification Platform — critical subsystem") {
+  ContainerQueue(bus, "Event and command bus", "Apache Kafka", "Isolated critical topics; CDC from outbox")
+  Container(control, "Delivery Control", "Go", "Intake, state machine, durable scheduler; separate worker roles")
+  ContainerDb(state, "Delivery Store", "PostgreSQL", "Notifications, attempts, inbox, outbox and deadlines")
+  Container(gateway, "Channel Gateway", "Go", "Adapters, callback verification and reconciliation")
+}
+Rel(bank, bus, "Business events", "Debezium CDC / Kafka")
+Rel(bank, control, "Alternative intake path", "HTTPS / mTLS")
+Rel(bus, control, "Events and receipts", "Kafka")
+Rel(control, state, "Atomic state transitions", "SQL / TLS")
+Rel(control, bus, "Outbox send commands", "CDC / Kafka")
+Rel(bus, gateway, "Reserved send attempt", "Kafka")
+Rel(gateway, state, "Durable callback inbox", "SQL / TLS")
+Rel(gateway, profile, "Check policy and contacts", "HTTPS / mTLS")
+Rel(gateway, channels, "Send / status lookup", "HTTPS")
+Rel(channels, gateway, "Delivery callbacks", "HTTPS + signature")
+Rel(client, gateway, "Device receipt", "HTTPS + user auth")
+SHOW_LEGEND()
+@enduml
